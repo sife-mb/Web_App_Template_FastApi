@@ -1,0 +1,11 @@
+fastapi==0.116.1
+uvicorn==0.35.0
+python-jose[cryptography]>=3.3.0
+requests>=2.28.0
+pandas>=2.0.0
+statsmodels>=0.14.0
+numpy>=1.20.0
+matplotlib>=3.0.0
+
+# Hinzugefügt für die InfluxDB-API
+influxdb-client>=1.40.0

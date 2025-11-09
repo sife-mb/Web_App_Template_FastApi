@@ -1,0 +1,149 @@
+version: '3.8'
+
+services:
+  # ============================================
+  # AUTH & APP DIENSTE
+  # ============================================
+
+  # 1. Keycloak-Dienst (MODIFIZIERT)
+  keycloak:
+    image: quay.io/keycloak/keycloak:22.0.5
+    container_name: keycloak
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: 8080
+      # --- Zurück zu deiner funktionierenden Variante ---
+      KC_HOSTNAME_URL: http://localhost:8080
+      KC_PROXY: "edge"
+      # --- Ende der Änderung ---
+    command: start-dev 
+    ports:
+      - "8080:8080"
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+    networks:
+      - mein-netzwerk
+
+  # 2. Backend-Dienst (MODIFIZIERT)
+  backend:
+    build:
+      context: .
+      dockerfile: app/Dockerfile.backend 
+    container_name: backend
+    environment:
+      # Keycloak (Interne URLs)
+      KEYCLOAK_ISSUER: http://keycloak:8080/realms/labor-projekt 
+      KEYCLOAK_AUDIENCE: backend-client
+      
+      # --- HINZUGEFÜGT: InfluxDB-Verbindung ---
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: "MeinSicheresInfluxToken-Labor-2025!" # <-- WICHTIG: Setze hier das Token von unten!
+      INFLUXDB_ORG: "labor-projekt-org"
+      INFLUXDB_BUCKET: "labor-projekt-bucket"
+    ports:
+      - "8001:8001" 
+    volumes:
+      - ./app:/home/appuser/app 
+    networks:
+      - mein-netzwerk
+    depends_on:
+      - keycloak
+      - influxdb # <-- HINZUGEFÜGT
+
+  # 3. Frontend-Dienst (Unverändert)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend 
+    container_name: frontend
+    ports:
+      - "3001:3000" # Dein Port 3001, wie gewünscht
+    environment:
+      NEXTAUTH_URL: http://localhost:3001
+      NEXTAUTH_SECRET: "smartcampus2025" 
+      KEYCLOAK_ID: "frontend-client" 
+      KEYCLOAK_SECRET: "WKUMwDr3op9PA753bmpQMT96T1kk8riN"
+      KEYCLOAK_ISSUER: http://keycloak:8080/realms/labor-projekt
+    volumes:
+      - ./frontend:/app 
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - mein-netzwerk
+    depends_on:
+      - backend
+
+  # ============================================
+  # NEUE DIENSTE (DATENBANK & DASHBOARDS)
+  # ============================================
+
+  # 4. InfluxDB (Neu)
+  influxdb:
+    image: influxdb:2.7 # (Verwende eine feste Version statt 'latest')
+    container_name: influxdb
+    ports:
+      - "8087:8086" # Dein Port 8087, wie gewünscht
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    networks:
+      - mein-netzwerk
+    environment:
+      # Hier richtest du InfluxDB beim ersten Start ein
+      # ÄNDERE DIESES TOKEN!
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: adminpassword
+      DOCKER_INFLUXDB_INIT_ORG: "labor-projekt-org"
+      DOCKER_INFLUXDB_INIT_BUCKET: "labor-projekt-bucket"
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: "MeinSicheresInfluxToken-Labor-2025!" # <-- Kopiere dieses Token nach oben zum Backend!
+
+  # 5. Grafana (Neu)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000" # Dein Port 3000, wie gewünscht
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - mein-netzwerk
+    environment:
+      # Diese Variablen erlauben das "Spiegeln" (Einbetten)
+      # deiner Dashboards in dein Frontend
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+      GF_SECURITY_COOKIE_SAMESITE: "none"
+    depends_on:
+      - influxdb
+
+  # 6. Node-RED (Neu)
+  nodered:
+    image: nodered/node-red:latest
+    container_name: nodered
+    ports:
+      - "1880:1880" # Standard-Port, wie gewünscht
+    volumes:
+      - nodered_data:/data
+    networks:
+      - mein-netzwerk
+    depends_on:
+      - influxdb
+
+# ============================================
+# VOLUMES & NETZWERKE
+# ============================================
+
+volumes:
+  keycloak_data:
+  influxdb_data: # Neu
+  grafana_data:  # Neu
+  nodered_data:  # Neu
+
+networks:
+  mein-netzwerk:
+    driver: bridge
+
+
+

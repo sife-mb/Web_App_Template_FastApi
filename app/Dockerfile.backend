@@ -1,0 +1,54 @@
+# --- Stage 1: "Builder" Stage ---
+# Hier installieren wir alle Abhängigkeiten
+FROM python:3.10-slim AS builder
+
+# Setze ENV Vars
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+# Erstelle ein virtuelles Environment, in das wir installieren
+RUN python -m venv /opt/venv
+# Aktiviere das venv für alle folgenden RUN Befehle
+ENV PATH="/opt/venv/bin:$PATH"
+
+# requirements.txt kopieren und Pakete installieren
+# (Dies nutzt den Docker-Cache effizient)
+COPY ./requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
+
+
+# --- Stage 2: "Final" Stage ---
+# Das ist das finale, schlanke Image, das wir wirklich starten
+FROM python:3.10-slim
+
+# ENV Vars kopieren
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+# Einen sicheren "non-root" Benutzer erstellen
+RUN useradd --create-home appuser
+# Das Arbeitsverzeichnis ist jetzt das Home-Verzeichnis dieses Users
+WORKDIR /home/appuser
+
+# Kopiere das saubere virtuelle Environment aus dem "Builder" Stage
+COPY --from=builder /opt/venv /opt/venv
+
+# Kopiere den App-Code in ein Unterverzeichnis 'app'
+COPY ./app ./app
+# Setze die Berechtigungen für den neuen User
+RUN chown -R appuser:appuser /home/appuser
+
+# Wechsle zum neuen User
+USER appuser
+
+# Setze den PYTHONPATH, damit Python das 'app'-Paket findet
+ENV PYTHONPATH /home/appuser
+# Setze den PATH, damit die 'uvicorn'-Executable aus dem venv gefunden wird
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Port freigeben
+EXPOSE 8001
+
+# App starten (funktioniert dank PYTHONPATH)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]

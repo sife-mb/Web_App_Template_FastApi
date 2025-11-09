@@ -1,0 +1,32 @@
+# Stage 1: Build
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# package.json und lock-Datei kopieren
+COPY package.json package-lock.json ./
+RUN npm install
+
+# Restlichen Code kopieren und App bauen
+COPY . .
+RUN npm run build
+
+# Stage 2: Produktion
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Nur die notwendigen Dateien aus dem Builder-Stage kopieren
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/public ./public
+# next.config.mjs und andere notwendige Configs
+COPY --from=builder /app/next.config.mjs ./next.config.mjs
+COPY --from=builder /app/postcss.config.mjs ./postcss.config.mjs
+COPY --from=builder /app/jsconfig.json ./jsconfig.json
+
+EXPOSE 3000
+
+# App starten
+CMD ["npm", "start"]
